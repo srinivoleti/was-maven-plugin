@@ -37,11 +37,8 @@ class WebSphere:
                 print "[NOTICE]: It takes a few minutes for the cluster to fully back running after the build finished!"
                 print '='*60
                 print ""
-            elif "" != node:
-                appManager = AdminControl.queryNames('node=' + node + ',type=Server,process=' + server + ',*')
-                print AdminControl.invoke(appManager, 'restart')
             else:
-                appManager = AdminControl.queryNames('type=Server,process=' + server + ',*')
+                appManager = self.getAppManager()
                 print AdminControl.invoke(appManager, 'restart')
         except:
             print "FAILED to restart cluster/server:"
@@ -58,13 +55,15 @@ class WebSphere:
         print '-'*60
         try:
             if "" != cluster:
-                appManager = AdminControl.queryNames('type=ApplicationManager,process=' + server + ',*')
-            elif "" != node:
-                appManager = AdminControl.queryNames('node=' + node + ',type=Server,process=' + server + ',*')
+                cell = AdminControl.getCell()
+                managedNodeNames = AdminTask.listManagedNodes().splitlines()
+                for managedNodeName in managedNodeNames:
+                    appManager = AdminControl.queryNames('type=ApplicationManager,process=' + server + ',node=' + managedNodeName + ',cell=' + cell + ',*')
+                    print "Starting " + applicationName + " on " + managedNodeName
+                    print AdminControl.invoke(appManager, 'startApplication', applicationName)
             else:
-                appManager = AdminControl.queryNames('type=Server,process=' + server + ',*')
-            print AdminControl.invoke(appManager, 'startApplication', applicationName)
-            #AdminApplication.startApplicationOnCluster(applicationName, cluster)
+                appManager = self.getAppManager()
+          	print AdminControl.invoke(appManager, 'startApplication', applicationName)
         except:
             print "FAILED to start application:"
             print '-'*10
@@ -78,30 +77,48 @@ class WebSphere:
         print '-'*60
         try:
             if "" != cluster:
-                appManager = AdminControl.queryNames('type=ApplicationManager,process=' + server + ',*')
-            elif "" != node:
-                appManager = AdminControl.queryNames('node=' + node + ',type=Server,process=' + server + ',*')
+                cell = AdminControl.getCell()
+                managedNodeNames = AdminTask.listManagedNodes().splitlines()
+                for managedNodeName in managedNodeNames:
+                    appManager = AdminControl.queryNames('type=ApplicationManager,process=' + server + ',node=' + managedNodeName + ',cell=' + cell + ',*')
+                    print "Starting " + applicationName + " on " + managedNodeName
+                    print AdminControl.invoke(appManager, 'stopApplication', applicationName)
             else:
-                appManager = AdminControl.queryNames('type=Server,process=' + server + ',*')
-            print AdminControl.invoke(appManager, 'stopApplication', applicationName)
-            #AdminApplication.stopApplicationOnCluster(applicationName, cluster)
+            	appManager = self.getAppManager()
+          	print AdminControl.invoke(appManager, 'stopApplication', applicationName)
         except:
             print "FAILED to stop application:"
             print '-'*10
             traceback.print_exc(file=sys.stdout)
             print '-'*10
 
+    def getAppManager(self):
+        if "" != cluster:
+            appManager = AdminControl.queryNames('type=ApplicationManager,process=' + server + ',*')
+        elif "" != node:
+            appManager = AdminControl.queryNames('node=' + node + ',type=ApplicationManager,process=' + server + ',*')
+        else:
+            appManager = AdminControl.queryNames('type=Server,process=' + server + ',*')
+        return appManager
+
     def installApplication(self):
         print '-'*60
-        print "[INSTALLING APPLICATION]", host, applicationName
+        print "[INSTALLING APPLICATION - CUSTOMIZED]", host, applicationName
         print time.strftime("%Y-%b-%d %H:%M:%S %Z")
         print '-'*60
 
-        options = ['-deployws', '-distributeApp', '-appname', applicationName, '-server', server]
+        options = ['-deployws', '-distributeApp', '-appname', applicationName]
 
         try:
             if "" != cluster:
-                serverMapping = 'WebSphere:cluster=' + cluster
+                cell = AdminControl.getCell()
+                serverMapping = 'WebSphere:cell=' + cell + ',cluster=' + cluster
+                unmanagedNodeNames = AdminTask.listUnmanagedNodes().splitlines()
+                for unmanagedNodeName in unmanagedNodeNames:
+                    webservers = AdminTask.listServers('[-serverType WEB_SERVER -nodeName ' + unmanagedNodeName + ']').splitlines()
+                    for webserver in webservers:
+                        webserverName = AdminConfig.showAttribute(webserver, 'name')
+                        serverMapping = serverMapping + '+WebSphere:cell=' + cell + ',node=' + unmanagedNodeName + ',server=' + webserverName
                 options += ['-cluster', cluster, '-MapModulesToServers', [['.*','.*', serverMapping]]]
             else:
                 serverMapping = 'WebSphere:server=' + server
